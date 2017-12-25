@@ -1,0 +1,15 @@
+[uwsgi]
+protocol=	http
+socket=		/opt/uwsgi/sock/demo1.sock
+chdir=		/usr/share/nginx/html/my_app
+uid=		uwsgi
+chmod-socket=	664
+chown-socket=	uwsgi
+logto=		/var/log/uwsgi/demo1.log
+logfile-chown=	uwsgi
+pidfile= 	/var/run/uwsgi/demo1.pid
+http-socket= 	:8002
+master=		false
+#pythonpath= 	/usr/local/lib/python3.6
+#wsgi-file=	/usr/share/nginx/html/my_app/test.py
+wsgi-file=	test.py
