@@ -23,6 +23,15 @@ NAME=emperor
 DESC=uwsgi-emperor-mike2
 OWNER=uwsgi	
 GROUP=uwsgi
+PYTHONPATH=/opt/python/python3.6/lib/python3.6/
+PYTHONPATH=$PYTHONPATH:/usr/local/Python-3.6.3/site-packages
+PYTHONPATH=$PYTHONPATH:/opt/rh/python27/root/usr/lib/python2.7/site-packages/docutils/utils
+PYTHONPATH=$PYTHONPATH:/usr/local/Python-3.6.3/Modules
+PYTHONPATH=$PYTHONPATH:/opt/python/python3.6/lib/python3.6/lib-dynload
+export PYTHONPATH
+PYTHONHOME=""
+export PYTHONHOME
+
 
 [[ -x $DAEMON ]] || exit 0
 [[ -d $RUN_DIR ]] || mkdir $RUN_DIR && chown $OWNER:$GROUP $RUN_DIR
@@ -108,14 +117,7 @@ do_start()
     local PIDFILE=$RUN_DIR/$NAME.pid
     
 
-    local START_OPTS=" \
-        --emperor $VASSALS_DIR \
-        --pidfile $PIDFILE \
-        --master \
-        --uid $OWNER \
-        --gid $GROUP \
-        --ini $CONF        
-        --daemonize $LOG_DIR/emperor.log"
+    local START_OPTS=" --ini $CONF --daemonize $LOG_DIR/x_emperor.log"
 
 
 
@@ -191,6 +193,10 @@ case "$1" in
     log)
 	cat $LOG_DIR/$NAME.log
 	;;
+    printenv)
+echo $PYTHONPATH
+
+;;
     restart)
         echo  "Restarting $DESC: "
         do_stop
