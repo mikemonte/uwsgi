@@ -1,0 +1,224 @@
+#!/usr/bin/env bash
+
+### BEGIN INIT INFO
+# Provides:          uwsgi-emperor
+# Required-Start:    $all
+# Required-Stop:     $all
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: starts the uwsgi emperor app server
+# Description:       starts uwsgi emperor app server using start-stop-daemon
+### END INIT INFO
+set -e
+
+
+PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/bin
+DAEMON=/usr/local/bin/uwsgi 
+CONF=/etc/uwsgi/emperor.ini
+RUN_DIR=/var/run/uwsgi
+LOG_DIR=/var/log/uwsgi
+VASSALS_DIR=/etc/uwsgi/vassals
+MASTER=
+NAME=emperor
+DESC=uwsgi-emperor-mike2
+OWNER=uwsgi	
+GROUP=uwsgi
+PYTHONPATH=/opt/python/python3.6/lib/python3.6/
+PYTHONPATH=$PYTHONPATH:/usr/local/Python-3.6.3/site-packages
+PYTHONPATH=$PYTHONPATH:/opt/rh/python27/root/usr/lib/python2.7/site-packages/docutils/utils
+PYTHONPATH=$PYTHONPATH:/usr/local/Python-3.6.3/Modules
+PYTHONPATH=$PYTHONPATH:/opt/python/python3.6/lib/python3.6/lib-dynload
+export PYTHONPATH
+PYTHONHOME=""
+export PYTHONHOME
+
+
+[[ -x $DAEMON ]] || exit 0
+[[ -d $RUN_DIR ]] || mkdir $RUN_DIR && chown $OWNER:$GROUP $RUN_DIR
+[[ -d $LOG_DIR ]] || mkdir $LOG_DIR && chown $OWNER:$GROUP $LOG_DIR
+
+
+# Returns an associative array from given file
+# as key/value pairs 
+# example guid = root will return array["guid"]="root"
+# $1 is the file path - mandatory
+# $2 is the delimiter - optional, defaults to =
+
+file_to_assoc_array(){
+	local ar
+	local input_file=$1
+	IFS=$'\r\n' GLOBIGNORE='*' command eval 'ini_opts=($(cat $input_file))'	
+    	unset ini_opts[0]
+   	declare -A test
+     for j in "${ini_opts[@]}"; do
+      	vr=$(echo ${j} | awk -F  "=" '{gsub(/ /, "", $0); print ("test[\""$1"\"]=\""$2"\"")}')
+     	eval $vr
+     done
+
+	local myVar="$( declare -p test )"
+ 	local IFS=$'\v';
+ 	echo "${myVar#*=}"
+	}
+
+
+get_all_workers_by_pid(){
+
+
+	local PIDFILE=$1
+	[[ -f $PIDFILE ]] || return 0
+	local PID=$(cat $PIDFILE) 
+	local sites_loc=$(cat $CONF)
+	eval declare -A test="$( file_to_assoc_array $CONF )"
+
+	echo ${test["logto"]}
+	echo ${test["emperor"]}
+
+	FILES=${test["emperor"]}/*.ini
+	for f in $FILES
+	do
+        fl=$(basename "$f")
+		eval declare -A worker_data="$( file_to_assoc_array $f )"
+		local PID=$(cat ${worker_data['pidfile']})
+		local is_running="Running...."
+		if do_pid_check ${worker_data['pidfile']} $fl; then
+			is_running="Stopped...."
+		fi
+		echo "*******************************************"
+  		echo "$fl STATUS: $is_running"
+		echo "*******************************************"
+ 		echo "Log file   ${worker_data['logto']}"
+		echo "Public dir ${worker_data['chdir']}"
+		echo "Protocol   ${worker_data['protocol']}"
+		echo "Socket     ${worker_data['socket']}"
+		echo "Port     ${worker_data['http-socket']}"
+		echo "User       ${worker_data['uid']}"  
+		echo "App        ${worker_data['wsgi-file']}"
+		echo "Pid        ${worker_data['pidfile']}"
+	done
+	}
+
+do_pid_check(){
+    local PIDFILE=$1
+	local process_name=$NAME
+	if [[ $2 != "" ]]; then
+		process_name="$2"
+	fi 
+	[[ -f $PIDFILE ]] || return 0
+    local PID=$(cat $PIDFILE)
+    for p in $(pgrep -f $process_name); do
+		[[ $p == $PID ]] && return 1
+    done
+    return 0
+}
+
+
+do_start()
+{
+    local PIDFILE=$RUN_DIR/$NAME.pid
+    
+
+    local START_OPTS=" --ini $CONF --daemonize $LOG_DIR/x_emperor.log"
+
+
+
+    if do_pid_check $PIDFILE; then
+        $DAEMON $START_OPTS
+    else
+        echo "Already running!"
+    fi
+}
+
+send_sig()
+{
+    local PIDFILE=$RUN_DIR/$NAME.pid
+    set +e
+    [[ -f $PIDFILE ]] && kill $1 $(cat $PIDFILE) > /dev/null 2>&1
+    set -e
+}
+
+wait_and_clean_pidfile()
+{
+    local PIDFILE=$RUN_DIR/$NAME.pid
+    until do_pid_check $PIDFILE; do
+        echo -n "";
+    done
+    rm -f $PIDFILE
+}
+
+do_stop()
+{
+    local PIDFILE=$RUN_DIR/$NAME.pid
+    send_sig -3
+    uwsgi --stop $PIDFILE
+    wait_and_clean_pidfile
+}
+
+do_reload()
+{
+    send_sig -1
+}
+
+do_force_reload()
+{
+    send_sig -15
+}
+
+get_status()
+{
+   
+status $NAME
+}
+
+case "$1" in
+    start)
+        echo "Starting $DESC: "
+        do_start
+        echo "$NAME."
+        ;;
+    stop)
+        echo -n "Stopping $DESC: "
+        do_stop
+        echo "$NAME."
+        ;;
+    reload)
+        echo -n "Reloading $DESC: "
+        do_reload
+        echo "$NAME."
+        ;;
+    force-reload)
+        echo -n "Force-reloading $DESC: "
+        do_force_reload
+        echo "$NAME."
+       ;;
+    log)
+	cat $LOG_DIR/$NAME.log
+	;;
+    printenv)
+echo $PYTHONPATH
+
+;;
+    restart)
+        echo  "Restarting $DESC: "
+        do_stop
+        sleep 1
+        do_start
+        echo "$NAME."
+        ;;
+    worker-status)
+get_all_workers_by_pid $RUN_DIR/$NAME.pid
+;;
+    status)
+echo $RUN_DIR/$NAME.pid
+      	if do_pid_check $RUN_DIR/$NAME.pid; then
+        	echo "$NAME is stopped"
+    	else
+        	echo "$NAME is running!"
+    	fi      
+	;;
+*)
+        N=/etc/init.d/$NAME
+        echo "Usage: $N {start|stop|restart|reload|force-reload|status}">&2
+        exit 1
+        ;;
+esac
+exit 0
